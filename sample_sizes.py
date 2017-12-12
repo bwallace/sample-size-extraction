@@ -32,6 +32,7 @@ def build_training_data(csv_path="ctgov_sample_sizes.csv"):
         y = annotate(row["tokenized_ab"], nums_to_labels)
         label_vectors.append(y)
     df["y"] = label_vectors
+    return df
 
 def annotate(tokenized_abstract, nums_to_labels):
     # nums_to_labels : dictionary mapping numbers to labels
