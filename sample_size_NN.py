@@ -500,7 +500,7 @@ def eval_on_heldout(nn, df_heldout):
 
 # df_redux_w_nums.csv"
 def main(data_path="augmented_sample_size_df_clean.csv", max_features=10000, test_split=.1, epochs=5, batch_size=32, 
-            final_train=False, model_weights_path="sample_size_weights.hdf5"):
+            final_train=True, model_weights_path="sample_size_weights.hdf5"):
     df = load_data(data_path)
     from sklearn.utils import shuffle
 
@@ -577,8 +577,9 @@ def main(data_path="augmented_sample_size_df_clean.csv", max_features=10000, tes
         df_heldout = load_heldout_data()
 
         # make preds per abstract, and score? 
+        preds_d, errors = eval_on_heldout(nn, df_heldout)
 
-        return nn, fpr, tpr, thresholds, df_heldout
+        return nn, fpr, tpr, thresholds, df_heldout, preds_d, errors
 
     else:
         nn.model.fit(X_tr_fvs, y_tr, 
@@ -602,6 +603,11 @@ def main(data_path="augmented_sample_size_df_clean.csv", max_features=10000, tes
 
         return df_train, df_test, p, X_tr, y_tr, X_test, y_test, nn
 
+
+'''
+import sample_size_NN
+nn, fpr, tpr, thresholds, df_heldout, preds_d, errors = sample_size_NN.main(final_train=True, epochs=3, max_features=10000)
+'''
 
 
 
