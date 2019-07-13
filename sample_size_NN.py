@@ -11,7 +11,7 @@ import spacy
 from sklearn.feature_extraction.text import CountVectorizer
 
 import gensim 
-from gensim.models import Word2Vec
+#from gensim.models import Word2Vec
 
 import keras 
 from keras.layers import Input
@@ -46,10 +46,11 @@ class MLPSampleSizeClassifier:
         self.nlp = spacy.load('en') # to avoid instantiating multiple times.
         # this is for POS tags
         self.PoS_tags_to_indices = {}
-        for idx, tag in enumerate(self.nlp.tagger.tag_names):
+        self.tag_names = [u'""', u'#', u'$', u"''", u',', u'-LRB-', u'-RRB-', u'.', u':', u'ADD', u'AFX', u'BES', u'CC', u'CD', u'DT', u'EX', u'FW', u'GW', u'HVS', u'HYPH', u'IN', u'JJ', u'JJR', u'JJS', u'LS', u'MD', u'NFP', u'NIL', u'NN', u'NNP', u'NNPS', u'NNS', u'PDT', u'POS', u'PRP', u'PRP$', u'RB', u'RBR', u'RBS', u'RP', u'SP', u'SYM', u'TO', u'UH', u'VB', u'VBD', u'VBG', u'VBN', u'VBP', u'VBZ', u'WDT', u'WP', u'WP$', u'WRB', u'XX', u'``']
+        for idx, tag in enumerate(self.tag_names):
             self.PoS_tags_to_indices[tag] = idx
         
-        self.n_tags = len(self.nlp.tagger.tag_names)
+        self.n_tags = len(self.tag_names)#len(self.nlp.tagger.tag_names)
 
         # threshold governing whether to abstain from predicting
         # this as a sample size altogether (for highest scoring 
@@ -72,82 +73,95 @@ class MLPSampleSizeClassifier:
 
     def PoS_tags_to_one_hot(self, tag):
         one_hot = np.zeros(self.n_tags)
-        one_hot[self.PoS_tags_to_indices[tag]] = 1.0
+        if tag in self.PoS_tags_to_indices:
+            one_hot[self.PoS_tags_to_indices[tag]] = 1.0
+        else:
+            pass
         return one_hot
 
     def featurize_for_input(self, X):
-        left_token_inputs, left_PoS, target_token_inputs, \
-            right_token_inputs, right_PoS, other_inputs = [], [], [], [], [], []
+        left_token_inputs, left_PoS, right_token_inputs, right_PoS, other_inputs = [], [], [], [], []#, []
+            #target_token_inputs, \
+            
 
         # helper func for looking up word indices
         def get_w_index(w):
             unk_idx = self.preprocessor.tokenizer.word_index[self.preprocessor.unk_symbol]
             try: 
                 word_idx = self.preprocessor.tokenizer.word_index[w]
-                if word_idx <= self.preprocessor.max_features:
+                if word_idx < self.preprocessor.max_features:
                     return word_idx 
                 else: 
                     return unk_idx
-            except: 
-                return unk_idx
+            except:
+                pass 
+
+            return unk_idx
 
 
+        #import pdb; pdb.set_trace()
         
         for x in X:
-            l_word_idx = get_w_index(x["left word"])
+            #import pdb; pdb.set_trace()
+            #l_word_idx = get_w_index(x["left_word"])
+            l_word_idx = np.array([get_w_index(w_i) for w_i in x["left_word"]])
             left_token_inputs.append(np.array([l_word_idx]))
             
-            left_PoS.append(self.PoS_tags_to_one_hot(x["left PoS"]))
+            left_PoS.append(self.PoS_tags_to_one_hot(x["left_PoS"]))
 
-            target_token_inputs.append(np.array(x["target"]))
+            #target_token_inputs.append(np.array(x["target"]))
 
-            r_word_idx = get_w_index(x["right word"])
+            #r_word_idx = get_w_index(x["right_word"])
+            r_word_idx = np.array([get_w_index(w_i) for w_i in x["right_word"]])
             right_token_inputs.append(np.array(r_word_idx))
 
-            right_PoS.append(self.PoS_tags_to_one_hot(x["right PoS"]))
+            right_PoS.append(self.PoS_tags_to_one_hot(x["right_PoS"]))
 
-            other_inputs.append(np.array(x["other features"]))
+            other_inputs.append(np.array(x["other_features"]))
 
             
-        X_inputs_dict = {"left token input":np.vstack(left_token_inputs), 
-                        "left PoS input":np.vstack(left_PoS),
-                        "target token input":np.vstack(target_token_inputs),
-                        "right token input":np.vstack(right_token_inputs),
-                        "right PoS input":np.vstack(right_PoS),
-                        "other feature inputs":np.vstack(other_inputs)}
+        X_inputs_dict = {"left_token_input":np.vstack(left_token_inputs), 
+                        "left_PoS_input":np.vstack(left_PoS),
+                        #"target_token_input":np.vstack(target_token_inputs),
+                        "right_token_input":np.vstack(right_token_inputs),
+                        "right_PoS_input":np.vstack(right_PoS),
+                        "other_feature_inputs":np.vstack(other_inputs)}
 
         return X_inputs_dict
     
 
     def build_MLP_model(self):
 
-        left_token_input = Input(name='left token input', shape=(1,))
+        NUM_WINDOW_FEATURES = 2
+        left_token_input = Input(name='left_token_input', shape=(NUM_WINDOW_FEATURES,))
         left_token_embedding = Embedding(output_dim=self.preprocessor.embedding_dims, input_dim=self.preprocessor.max_features, 
-                                        input_length=1)(left_token_input)
-        left_token_embedding = Flatten(name="left token embedding")(left_token_embedding)
+                                        input_length=NUM_WINDOW_FEATURES)(left_token_input)
+        left_token_embedding = Flatten(name="left_token_embedding")(left_token_embedding)
         
-        n_PoS_tags = len(self.nlp.tagger.tag_names)
-        left_PoS_input = Input(name='left PoS input', shape=(n_PoS_tags,))
-        target_token_input = Input(name='target token input', shape=(1,))
+        n_PoS_tags = len(self.tag_names)
+        left_PoS_input = Input(name='left_PoS_input', shape=(n_PoS_tags,))
+        #target_token_input = Input(name='target_token_input', shape=(1,))
 
-        right_token_input = Input(name='right token input', shape=(1,))
+        right_token_input = Input(name='right_token_input', shape=(NUM_WINDOW_FEATURES,))
         right_token_embedding = Embedding(output_dim=self.preprocessor.embedding_dims, input_dim=self.preprocessor.max_features, 
-                                          input_length=1)(right_token_input)
-        right_PoS_input = Input(name='right PoS input', shape=(n_PoS_tags,))
+                                          input_length=NUM_WINDOW_FEATURES)(right_token_input)
+        right_PoS_input = Input(name='right_PoS_input', shape=(n_PoS_tags,))
 
-        right_token_embedding = Flatten(name="right token embedding")(right_token_embedding)
+        right_token_embedding = Flatten(name="right_token_embedding")(right_token_embedding)
 
-        other_features_input = Input(name='other feature inputs', shape=(4,))
+        other_features_input = Input(name='other_feature_inputs', shape=(4,))
 
-        x = merge([left_token_embedding, target_token_input, right_token_embedding, 
+        x = merge([left_token_embedding, #target_token_input, 
+                    right_token_embedding, 
                     left_PoS_input, right_PoS_input, other_features_input],  
                     mode='concat', concat_axis=1)
-        x = Dense(128, name="hidden 1", activation='relu')(x)
-        x = Dense(64, name="hidden 2", activation='relu')(x) 
+        x = Dense(128, name="hidden1", activation='relu')(x)
+        x = Dropout(.2)(x)
+        x = Dense(64, name="hidden2", activation='relu')(x) 
 
         output = Dense(1, name="prediction", activation='sigmoid')(x)
 
-        self.model = Model([left_token_input, left_PoS_input, target_token_input, 
+        self.model = Model([left_token_input, left_PoS_input, #target_token_input, 
                             right_token_input, right_PoS_input, other_features_input], 
                            output=[output])
 
@@ -163,7 +177,9 @@ class MLPSampleSizeClassifier:
         
         abstract_tokens = replace_n_equals(abstract_tokens)
 
+
         abstract_features, numeric_token_indices = abstract2features(abstract_tokens, POS_tags)
+
 
         X = self.featurize_for_input(abstract_features)
         
@@ -177,7 +193,8 @@ class MLPSampleSizeClassifier:
 
 
 def load_trained_w2v_model(path):
-    m = Word2Vec.load_word2vec_format(path, binary=True)
+    #m = Word2Vec.load_word2vec_format(path, binary=True)
+    m = gensim.models.KeyedVectors.load_word2vec_format(path, binary=True)
     return m
 
 class Preprocessor:
@@ -288,11 +305,14 @@ def get_X_y(df):
 def annotate(tokenized_abstract, nums_to_labels):
     # nums_to_labels : dictionary mapping numbers to labels
     y = []
+    #import pdb; pdb.set_trace()
     for t in tokenized_abstract:
+
         try: 
             t_num = int(t)
-            if t_num in nums_to_labels.keys():
-                y.append(nums_to_labels[t_num])
+            
+            if str(t_num) in nums_to_labels.keys():
+                y.append(nums_to_labels[str(t_num)])
             else:
                 y.append("O")
         except:
@@ -351,6 +371,7 @@ def abstract2features(abstract_tokens, POS_tags):
                                       years_indices, patient_indices)
             x.append(features)
 
+
     return x, numeric_token_indices
 
 
@@ -363,9 +384,15 @@ def word2features(abstract_tokens, POS_tags, i, all_nums_in_abstract,
                     years_indices, patient_indices,
                     window_size_for_years=5,
                     window_size_patient_mention=4):
-    l_word, r_word = "", ""
+    ll_word, l_word, r_word, rr_word = "", "", "", ""
+
     l_POS, r_POS   = "", ""
     t_word = abstract_tokens[i]
+
+    if i > 1:
+        ll_word = abstract_tokens[i-2].lower()
+    else: 
+        ll_word = "BoS"
 
     if i > 0:
         l_word = abstract_tokens[i-1].lower()
@@ -373,6 +400,11 @@ def word2features(abstract_tokens, POS_tags, i, all_nums_in_abstract,
     else:
         l_word = "BoS"
         l_POS  = "XX" # i.e., unknown
+
+    if i < len(abstract_tokens)-2:
+        rr_word = abstract_tokens[i+2].lower()
+    else:
+        r_word = "LoS"
 
     if i < len(abstract_tokens)-1:
         r_word = abstract_tokens[i+1].lower()
@@ -409,17 +441,18 @@ def word2features(abstract_tokens, POS_tags, i, all_nums_in_abstract,
     if lower_year <= target_num <= upper_year:
         target_looks_like_a_year = 1.0
 
-    return {"left word":l_word, "target": target_num, "right word":r_word,  
-            "left PoS":l_POS, "right PoS":r_POS, 
-            "other features":[biggest_num_in_abstract, years_mention_within_window, 
+    return {"left_word":[ll_word, l_word], # "target": target_num, 
+            "right_word":[rr_word, r_word],  
+            "left_PoS":l_POS, "right_PoS":r_POS, 
+            "other_features":[biggest_num_in_abstract, years_mention_within_window, 
                                 target_looks_like_a_year, 
                                 patients_mention_follows_within_window]}
 
-def load_data(csv_path="ctgov_with_tags.csv"):
+def load_data(csv_path):
     return pd.read_csv(csv_path)
 
 
-def ROC_plot(fpr, tpr, path="ROC.pdf"):
+def ROC_plot(fpr, tpr, path="ROC2.pdf"):
     plt.clf()
     plt.figure()
     plt.plot(fpr, tpr)
@@ -431,9 +464,44 @@ def ROC_plot(fpr, tpr, path="ROC.pdf"):
     plt.title('ROC')
     plt.savefig(path)
 
-def main(max_features=10000, test_split=.1, epochs=10, batch_size=32, 
+
+def load_heldout_data(dpath="sample_size_df_test.csv"):
+    df_test = pd.read_csv(dpath)
+    return df_test
+
+def eval_on_heldout(nn, df_heldout):
+    correct, count, refused = 0, 0, 0
+    errors = []
+    preds_d = {"pred":[], "truth":[], "abs":[]}
+    for idx, row in df_heldout.iterrows():
+        pred = nn.predict_for_abstract(row["ab"])
+        y = row["enrolled_totals"]
+        count += 1
+        if pred is not None: 
+            pred = int(pred)
+            if pred == y:
+                correct += 1
+            errors.append(pred-y)#(pred - y)**2)
+        else:
+            refused += 1
+
+        preds_d["pred"].append(pred)
+        preds_d["truth"].append(y)
+        preds_d["abs"].append(row["ab"])
+
+    total_preds = float(count-refused)
+    acc = float(correct)/total_preds
+    mean_error = np.mean(errors)
+    std_error = np.std(errors)
+    print ("\n---\nResults\nRefused preds for {0}.\nAbstract accuracy: {1}.\nErrors (pred-y): {2} / std dev: {3}.\n".format(refused, acc, mean_error, std_error))
+    return pd.DataFrame(preds_d), errors
+
+
+
+# df_redux_w_nums.csv"
+def main(data_path="augmented_sample_size_df_clean.csv", max_features=10000, test_split=.1, epochs=5, batch_size=32, 
             final_train=False, model_weights_path="sample_size_weights.hdf5"):
-    df = load_data()
+    df = load_data(data_path)
     from sklearn.utils import shuffle
 
     df = shuffle(df, random_state=1337)
@@ -450,8 +518,8 @@ def main(max_features=10000, test_split=.1, epochs=10, batch_size=32,
     df_train = df.iloc[:train_n, :]
     
     X_tr, y_tr = get_X_y(df_train)
-    
-    wvs = load_trained_w2v_model("/Users/byron/dev/Deep-PICO/PubMed-w2v.bin")
+    #import pdb; pdb.set_trace()
+    wvs = load_trained_w2v_model("/Users/byronwallace/code/shared-data/PubMed-w2v.bin")
     
     p = Preprocessor(max_features, wvs, df["ab_numbers"].values)
 
@@ -461,7 +529,6 @@ def main(max_features=10000, test_split=.1, epochs=10, batch_size=32,
 
     X_tr_fvs = nn.featurize_for_input(X_tr)
 
-    #import pdb; pdb.set_trace()
     # todo ... obviously refactor-- very redundant
     if final_train:
         
@@ -495,6 +562,7 @@ def main(max_features=10000, test_split=.1, epochs=10, batch_size=32,
         y_hat = nn.model.predict(X_test_fvs)
 
         from sklearn import metrics
+        # note that this metric is on val data used for tuning!
         fpr, tpr, thresholds = metrics.roc_curve(y_test, y_hat)
         print (metrics.auc(fpr, tpr))
         
@@ -505,7 +573,12 @@ def main(max_features=10000, test_split=.1, epochs=10, batch_size=32,
             print ("something went wrong")
             pass 
        
-        return nn, fpr, tpr, thresholds
+        # now load in held-out ebm-nlp data for assessment
+        df_heldout = load_heldout_data()
+
+        # make preds per abstract, and score? 
+
+        return nn, fpr, tpr, thresholds, df_heldout
 
     else:
         nn.model.fit(X_tr_fvs, y_tr, 
